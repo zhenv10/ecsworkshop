@@ -6,40 +6,40 @@ hidden: true
 
 ### Deploy our application, service, and environment
 
-First, let's test the existing code for any errors.
+First, we can test the code provided to you to see if there are any errors.
 
 ```bash
 cd ~/environment/windows-ecs-cdk-example
 cdk synth
 ```
 
-This creates the cloudformation templates which output to a local directory `cdk.out`.   Successful output will contain (ignore any warnings generated):
+This generates the necessary cloudformation templates to the directory `cdk.out` within your `windows-ecs-cdk-example` folder.  You should receive this output (ignore any warnings generated):
 
 ```bash
-Successfully synthesized to /Users/zhenv/Desktop/ecs-windows-workloads/cdk.out
+Successfully synthesized to /home/ec2-user/environment/ecs-windows-workloads/cdk.out
 Supply a stack id (VPCStack, RDSStack, ECSWindowsStack) to display its template.
 ```
 
 (Note this is not a required step as `cdk deploy` will generate the templates again - this is an intermediary step to ensure there are no errors in the stack before proceeding.  If you encounter errors here stop and address them before deployment.)
 
-Then, to deploy this application and all of its stacks, run:
+To deploy this application and all of its stacks, run:
 
 ```bash
 cdk deploy --all --require-approval never --outputs-file result.json
 ```
 
-The process takes approximately 10 minutes.  The results of all the actions will be stored in `result.json` for later reference.
+The process takes approximately 15-20 minutes.  The results of all the actions will be stored in `result.json` for later reference.
 
 {{%expand "Expand to view deployment screenshots" %}}
-<!-- ![CDK Output 1](/images/cdk-output-1.png)
-![CDK Output 2](/images/cdk-output-2.png) -->
+![CDK Output 1](/images/cdk-windows-workloads-1.png)
+![CDK Output 2](/images/cdk-windows-workloads-2.png)
 {{% /expand%}}
 
 ### Code Review
 
 Let's review whats happening behind the scenes.
 
-The repository contains a sample application that deploys an ***ECS EC2 Service***.  The service runs this ASP.NET application that connects to a ***AWS RDS Aurora MySQL Database***.  The credentials for this application are stored in ***AWS Secrets Manager***.
+The repository contains a sample application that deploys an ***ECS Service with EC2***.  The service runs this ASP.NET application that connects to a ***AWS RDS Aurora MySQL Database***.  The credentials for this application are stored in ***AWS Secrets Manager***.
 
 First, let's look at the application context variables:
 
@@ -119,7 +119,7 @@ export class VPCStack extends Stack {
 }
 ```
 
-The VPC stack creates a new VPC within the AWS account.   The CIDR address space for this VPC is `10.0.0.0./16`.   It will set up 2 public subnets with NAT Gateways and 2 private subnets with all the appropriate routing information automatically.   An interface is setup to pass in the value for `maxAzs` which is set to 2 in the main application.
+The VPC stack creates a new VPC within the AWS account. The CIDR address space for this VPC is `10.0.0.0./16`.   It will set up 2 public subnets with NAT Gateways and 2 private subnets with all the appropriate routing information automatically.   An interface is setup to pass in the value for `maxAzs` which is set to 2 in the main application.
 {{% /expand%}}
 
 {{%expand "Review lib/rds-stack.ts" %}}
@@ -244,7 +244,7 @@ Every 30 days, the secret will be rotated and will automatically configure a Lam
 
 Finally, the ECS service stack is defined in `lib/windows-workloads.ts`
 
-The ECS EC2 cluster application is created here using the `ecs-patterns` library of the CDK.   This automatically creates the service from a given `containerImage` and sets up the code for a load balancer that is connected to the cluster and is public-facing.   The key benefit here is not having to manually add all the boilerplate code to make the application accessible to the world.   CDK simplifies infrastructure creation by abstraction.
+The ECS application is created here using the `ecs-patterns` library of the CDK.   This automatically creates the service from a given `containerImage` and sets up the code for a load balancer that is connected to the cluster and is public-facing. The main benefit of this is all of the manual work of making the application publically accessible is done for you. CDK simplifies infrastructure creation by abstraction.
 
 The stored credentials created in the RDS Stack are read from Secrets Manager and passed to our container task definition via the `secrets` property.  The secrets unique ARN is passed into this stack as a parameter `dbSecretArn`.
 
@@ -379,7 +379,7 @@ export class ECSWindowsStack extends Stack {
 {{% /expand%}}
 
 {{%expand "Review bin/secret-ecs-app.ts" %}}
-Finally, the stacks and the CDK infrastructure application itself are created in `bin/windows-workloads.ts`, the entry point for the cdk defined in the `cdk.json` mentioned earlier.
+Finally, the CloudFormation stacks and the infrastructure application are created in `bin/windows-workloads.ts` while the entry point for the cdk is defined in the `cdk.json` file mentioned earlier.
 
 ```ts
 #!/usr/bin/env node
@@ -407,29 +407,36 @@ ecsStack.addDependency(rdsStack);
 rdsStack.addDependency(vpcStack);
 ```
 
-A new CDK app is created `const App = new App()`, and the aforementioned stacks from `lib` are instantiated.  After creating the VPC, the VPC object is passed into the RDS and ECS stacks.  Dependencies are added to ensure the VPC is created before the RDS stack.
+A new CDK app is created `const App = new App()`, which utilizes the stacks within `lib`.  After the VPC is created, the VPC object is passed into the RDS and ECS stacks. Dependencies are added to ensure the VPC is created before the RDS stack.
 
 When creating the ECS stack, the same VPC object is passed along with a reference to the RDS stack generated `dbSecretArn` so that the ECS stack can look up the appropriate secret.  A dependency is created so that the ECS stack is created after the RDS Stack.
 {{% /expand%}}
 
-After deployment finishes, the last step for this tutorial is to get the LoadBalancer URL and run the migration which populates the database.
+After deployment finishes, the database is filled with example tasks. The final step is to get the Load Balancer url by issuing the follow command. 
 
 ```bash
 url=$(jq -r '.ECSWindowsStack' result.json | grep 'LoadBalancer*' | cut -f2 -d: | tr -d ' ",')
-curl -s $url/migrate | jq
 ```
 
-(Note that the migration may take a few seconds to connect and run.)
+To view the app, open a browser and go to the Load Balancer URL `ECSWi-demoa-xxxxxxxxxx.yyyyy.elb.amazonaws.com`.
 
-The custom method `migrate` creates the database schema and a single row of data for the sample application. It is part of the sample application in this tutorial.
+You can also view the tasks using the `curl` command.
 
-To view the app, open a browser and go to the Load Balancer URL `ECSWi-demoa-xxxxxxxxxx.yyyyy.elb.amazonaws.com` (the URL is clickable in the Cloud9 interface):
-![Secrets Todo](/images/secrets-todo.png)
+```bash
+curl -s $url/api/todos
+```
+
+<!-- (Note that the migration may take a few seconds to connect and run.)
+
+The custom method `migrate` creates the database schema and a single row of data for the sample application. It is part of the sample application in this tutorial. -->
+
+<!-- To view the app, open a browser and go to the Load Balancer URL `ECSWi-demoa-xxxxxxxxxx.yyyyy.elb.amazonaws.com` (the URL is clickable in the Cloud9 interface):
+![Secrets Todo](/images/secrets-todo.png) -->
 
 Similar to the secrets section of this workshop, this Todo application is fully functional. Feel free to experiment with it by creating, editing, and deleting tasks. You can also connect to the MySQL Database using a database client or the `mysql` command line tool to browse the database.
 
-As an added benefit of using RDS Aurora Postgres Serverless, you can also use the query editor in the AWS Management Console - find more information **[here](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/query-editor.html)**. All you need is the secret ARN created during stack creation.  Fetch this value at the Cloud9 terminal and copy/paste into the query editor dialog box.   Use the database name `tododb` as the target database to connect.
-
+<!-- As an added benefit of using RDS Aurora Postgres Serverless, you can also use the query editor in the AWS Management Console - find more information **[here](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/query-editor.html)**. All you need is the secret ARN created during stack creation.  Fetch this value at the Cloud9 terminal and copy/paste into the query editor dialog box.   Use the database name `tododb` as the target database to connect. -->
+<!-- 
 ```bash
 aws secretsmanager list-secrets | jq -r '.SecretList[].ARN'
-```
+``` -->

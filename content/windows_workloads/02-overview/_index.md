@@ -10,7 +10,11 @@ Windows container instances run their very own version of the Amazon ECS contain
 
 For additonal information, [check out the official AWS documentation.](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ECS_Windows.html)
 
+This tutorial will demonstrate how to deploy an ASP.net application 
+
 Here is a diagram that outlines what we will be building:
+
+{{< figure src="/images/windows-workload-diagram.png" alt="Windows Diagram" width="1200px" >}}
 
 ## need diagram of solution here
 
